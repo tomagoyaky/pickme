@@ -5,7 +5,7 @@ set -e
 # 常量定义
 # ==============================================
 readonly REQUIRED_UBUNTU_VERSION="24.04"
-readonly CONDA_ENV_NAME="common-python-3.12"
+readonly CONDA_ENV_NAME="spark-tts-python-3.12"
 readonly PYTHON_VERSION="3.12"
 readonly NVIDIA_DRIVER_VERSION="550.163.01"  # Tesla 100兼容版本
 readonly CUDA_TOOLKIT_VERSION="12.4"         # PyTorch安装指定版本
@@ -92,7 +92,12 @@ install_spark_tts() {
     fi
     cd "$DIR_REPO"
     echo "-- 安装 Spark-TTS 依赖..."
-    pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host=mirrors.aliyun.com > /dev/null 2>&1
+    if [ ! -f "$DIR_WORKSPACE/status/spark-tts.requirements_installed" ]; then
+        pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host=mirrors.aliyun.com
+        touch "$DIR_WORKSPACE/status/spark-tts.requirements_installed"
+    else
+        echo "✅ Spark-TTS 依赖已安装，无需重复安装。"
+    fi
     echo "✅ Spark-TTS 依赖安装完成。"
 }
 download_spark_tts_model(){
