@@ -262,7 +262,17 @@ EOF
 # 主函数：脚本入口
 # ==============================================
 main() {
-    model_package_name="Ttimofeyka/MistralRP-Noromaid-NSFW-Mistral-7B-GGUF"
+    # model_package_name="Ttimofeyka/MistralRP-Noromaid-NSFW-Mistral-7B-GGUF"
+    # model_file_name="MistralRP-Noromaid-NSFW-7B-Q8_0.gguf"
+
+    # - https://huggingface.co/mradermacher/Dirty-Muse-Writer-v01-Uncensored-Erotica-NSFW-i1-GGUF/tree/main?not-for-all-audiences=true
+    model_package_name="mradermacher/Dirty-Muse-Writer-v01-Uncensored-Erotica-NSFW-i1-GGUF"
+    model_file_name="Dirty-Muse-Writer-v01-Uncensored-Erotica-NSFW.i1-Q6_K.gguf"
+
+    echo "✅ 模型包名：$model_package_name"
+    echo "✅ 模型文件名：$model_file_name"
+    echo "✅ 模型路径：$DIR_HF_MODELS/$model_package_name/$model_package_name"
+
     check_ubuntu_version
 
     # 检查conda环境并创建/激活
@@ -271,14 +281,28 @@ main() {
     # 下载Hugging Face模型
     # 需要计算这个函数执行的时间是多少秒，如果大于1分钟则以分钟为单位显示，如果大于1小时则以小时为单位
     start_time=$(date +%s)
-    download_huggingface_package "$model_package_name"
+    # download_huggingface_package "$model_package_name"
 
     echo "-- 正在安装依赖..."
-    conda install -c conda-forge libstdcxx-ng gcc
+    if ! conda list | grep -q "conda-forge"; then
+        conda install -c conda-forge
+    else
+        echo "✅ conda-forge 已安装，无需重复安装。"
+    fi
+    if ! conda list | grep -q "libstdcxx-ng"; then
+        conda install -c libstdcxx-ng
+    else
+        echo "✅ libstdcxx-ng 已安装，无需重复安装。"
+    fi
+    if ! conda list | grep -q "gcc"; then
+        conda install -c gcc
+    else
+        echo "✅ gcc 已安装，无需重复安装。"
+    fi
     export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda-$CUDA_TOOLKIT_VERSION/lib64:$LD_LIBRARY_PATH
 
     if [ $DEBUGGABLE ]; then
-        test_llama_token_speed "$DIR_HF_MODELS/$model_package_name/MistralRP-Noromaid-NSFW-7B-Q8_0.gguf"
+        test_llama_token_speed "$DIR_HF_MODELS/$model_package_name/$model_file_name"
     fi
 
     end_time=$(date +%s)
@@ -293,8 +317,8 @@ main() {
 
     # 加载Hugging Face模型
     mkdir -p "$DIR_WORKSPACE/output"
-    load_huggingface_model "$DIR_HF_MODELS/$model_package_name/MistralRP-Noromaid-NSFW-7B-Q8_0.gguf" \
-        "写一段50字的情色口播。要求更多的语气词,使用中文，不要换行空格" > "$DIR_WORKSPACE/output/model.prompt2txt.txt"
+    load_huggingface_model "$DIR_HF_MODELS/$model_package_name/$model_file_name" \
+        "写一段500字的色情小说。要求更多的语气词，少一些旁白；包含口交、做爱等场景，使用中文输出，不要空行和空格" > "$DIR_WORKSPACE/output/model.prompt2txt.txt"
     cat "$DIR_WORKSPACE/output/model.prompt2txt.txt"
 }
 main
