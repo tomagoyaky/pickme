@@ -14,7 +14,22 @@ readonly DIR_CURRENT=$(pwd)
 readonly DIR_WORKSPACE="$DIR_CURRENT/workspace"
 readonly DIR_REPO="$DIR_WORKSPACE/Spark-TTS"
 
-export CUDA_VISIBLE_DEVICES=1 # 只用第1张显卡（编号从0开始），因为当前环境中，0号为16GB，1和2为32GB
+export CUDA_VISIBLE_DEVICES=1,2 # 只用第1张显卡（编号从0开始），因为当前环境中，0号为16GB，1和2为32GB
+# ==============================================
+# 函数定义：检查Ubuntu版本
+# ==============================================
+check_ubuntu_version() {
+    local current_version
+    current_version=$(lsb_release -rs)
+    
+    if [[ "$current_version" != "$REQUIRED_UBUNTU_VERSION" ]]; then
+        echo "❌ 当前Ubuntu版本为$current_version，必须为$REQUIRED_UBUNTU_VERSION才能继续执行。"
+        exit 1
+    else
+        echo "✅ Ubuntu版本检查通过：$current_version"
+    fi
+}
+
 # ==============================================
 # 函数定义：检查conda环境是否存在，不存在则创建并激活
 # ==============================================
@@ -101,6 +116,7 @@ text2voice(){
 # ==============================================
 main() {
     message=$1
+    check_ubuntu_version
 
     # 检查conda环境并创建/激活
     check_and_create_conda_env
@@ -120,7 +136,23 @@ main() {
     # 安装 Spark-TTS
     install_spark_tts
     # 下载 Spark-TTS 模型
+    start_download_time=$(date +%s)
     download_spark_tts_model
+    end_download_time=$(date +%s)
+    download_duration=$((end_download_time - start_download_time))
+
+    if (( download_duration >= 3600 )); then
+        hours=$((download_duration / 3600))
+        mins=$(((download_duration % 3600) / 60))
+        secs=$((download_duration % 60))
+        echo "⏱️ Spark-TTS模型下载耗时: ${hours}小时${mins}分钟${secs}秒"
+    elif (( download_duration >= 60 )); then
+        mins=$((download_duration / 60))
+        secs=$((download_duration % 60))
+        echo "⏱️ Spark-TTS模型下载耗时: ${mins}分钟${secs}秒"
+    else
+        echo "⏱️ Spark-TTS模型下载耗时: ${download_duration}秒"
+    fi
     # 文字转语音
     start_time=$(date +%s)
     text2voice "$message"

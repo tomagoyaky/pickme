@@ -4,6 +4,7 @@ set -e
 # ==============================================
 # 常量定义
 # ==============================================
+readonly DEBUGGABLE=1
 readonly REQUIRED_UBUNTU_VERSION="24.04"
 readonly CONDA_ENV_NAME="common-python-3.12"
 readonly PYTHON_VERSION="3.12"
@@ -14,6 +15,21 @@ readonly DIR_CURRENT=$(pwd)
 readonly DIR_WORKSPACE="$DIR_CURRENT/workspace"
 
 export CUDA_VISIBLE_DEVICES=1,2 # 只用第1张显卡（编号从0开始），因为当前环境中，0号为16GB，1和2为32GB
+# ==============================================
+# 函数定义：检查Ubuntu版本
+# ==============================================
+check_ubuntu_version() {
+    local current_version
+    current_version=$(lsb_release -rs)
+    
+    if [[ "$current_version" != "$REQUIRED_UBUNTU_VERSION" ]]; then
+        echo "❌ 当前Ubuntu版本为$current_version，必须为$REQUIRED_UBUNTU_VERSION才能继续执行。"
+        exit 1
+    else
+        echo "✅ Ubuntu版本检查通过：$current_version"
+    fi
+}
+
 # ==============================================
 # 函数定义：检查conda环境是否存在，不存在则创建并激活
 # ==============================================
@@ -74,7 +90,32 @@ install_transformers_dependencies() {
     pip install transformers accelerate sentencepiece llama-cpp-python
     echo "✅ transformers及相关依赖安装完成。"
 }
+# ==============================================
+# 函数定义：测试llama-cpp-python推理速度
+# ==============================================
+test_llama_token_speed() {
+    local model_file="$1"
+    echo "测试llama-cpp-python推理速度"
+    if [[ -z "$model_file" ]]; then
+        echo "❌ 未指定gguf模型文件"
+        return 1
+    fi
+    python - <<EOF
+import time
+from llama_cpp import Llama
 
+llm = Llama(
+    model_path="$model_file",
+    use_gpu=True,
+    n_gpu_layers=-1,
+    n_ctx=2048,
+    verbose=False
+)
+start = time.time()
+llm.create_chat_completion(messages=[{"role": "user", "content": "Hello"}], max_tokens=100)
+print(f"GPU推理时间: {time.time() - start:.2f}s")
+EOF
+}
 # ==============================================
 # 函数定义：加载Hugging Face下载的模型
 # ==============================================
@@ -110,12 +151,14 @@ load_huggingface_model() {
 load_huggingface_model_with_llama(){
     model_file=$1
     user_input=$2
-    local max_context_num=32767
+    local max_context_num=3276
+
     python - <<EOF
 from llama_cpp import Llama
 
 llm = Llama(
     model_path="$model_file",
+    use_gpu=True,
     n_gpu_layers=-1,  # 使用全部GPU层
     n_ctx=$max_context_num,
     verbose=True     # 启用详细日志
@@ -220,6 +263,7 @@ EOF
 # ==============================================
 main() {
     model_package_name="Ttimofeyka/MistralRP-Noromaid-NSFW-Mistral-7B-GGUF"
+    check_ubuntu_version
 
     # 检查conda环境并创建/激活
     check_and_create_conda_env
@@ -228,6 +272,15 @@ main() {
     # 需要计算这个函数执行的时间是多少秒，如果大于1分钟则以分钟为单位显示，如果大于1小时则以小时为单位
     start_time=$(date +%s)
     download_huggingface_package "$model_package_name"
+
+    echo "-- 正在安装依赖..."
+    conda install -c conda-forge libstdcxx-ng gcc
+    export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/cuda-$CUDA_TOOLKIT_VERSION/lib64:$LD_LIBRARY_PATH
+
+    if [ $DEBUGGABLE ]; then
+        test_llama_token_speed "$DIR_HF_MODELS/$model_package_name/MistralRP-Noromaid-NSFW-7B-Q8_0.gguf"
+    fi
+
     end_time=$(date +%s)
     elapsed=$((end_time - start_time))
     if ((elapsed >= 3600)); then

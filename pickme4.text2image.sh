@@ -16,6 +16,21 @@ readonly DIR_REPO="$DIR_WORKSPACE/ComfyUI"
 
 export CUDA_VISIBLE_DEVICES=1,2 # 只用第1张显卡（编号从0开始），因为当前环境中，0号为16GB，1和2为32GB
 # ==============================================
+# 函数定义：检查Ubuntu版本
+# ==============================================
+check_ubuntu_version() {
+    local current_version
+    current_version=$(lsb_release -rs)
+    
+    if [[ "$current_version" != "$REQUIRED_UBUNTU_VERSION" ]]; then
+        echo "❌ 当前Ubuntu版本为$current_version，必须为$REQUIRED_UBUNTU_VERSION才能继续执行。"
+        exit 1
+    else
+        echo "✅ Ubuntu版本检查通过：$current_version"
+    fi
+}
+
+# ==============================================
 # 函数定义：检查conda环境是否存在，不存在则创建并激活
 # ==============================================
 check_and_create_conda_env() {
