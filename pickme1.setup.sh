@@ -43,6 +43,9 @@ check_ubuntu_version() {
         echo "✅ Ubuntu版本检查通过：$current_version"
     fi
 }
+# ==============================================
+# 函数定义：询问是否删除conda环境
+# ==============================================
 ask_delete_conda_env() {
     local is_delete_conda_env_flag=$1
     if [[ "$is_delete_conda_env_flag" == "-y" ]]; then
@@ -334,13 +337,13 @@ install_llama() {
         pip install --no-binary :all: llama-cpp-python           $LLAMA_UPDATE_PARAMS
     fi
     # 检查llama-cpp-python是否为GPU版本
-    echo "-- 检查llama-cpp-python是否为GPU版本..."
-    if pip show llama-cpp-python | grep -E 'cuBLAS|cu124'; then
-        echo "✅ llama-cpp-python GPU版本安装成功。"
-    else
-        echo "❌ llama-cpp-python GPU版本未检测到，请检查安装参数。"
-        exit 1
-    fi
+    # echo "-- 检查llama-cpp-python是否为GPU版本..."
+    # if pip show llama-cpp-python | grep -E 'cuBLAS|cu124'; then
+    #     echo "✅ llama-cpp-python GPU版本安装成功。"
+    # else
+    #     echo "❌ llama-cpp-python GPU版本未检测到，请检查安装参数。"
+    #     exit 1
+    # fi
     echo "✅ llama-cpp-python安装完成。"
 }
 # ==============================================

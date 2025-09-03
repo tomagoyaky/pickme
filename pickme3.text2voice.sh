@@ -5,14 +5,21 @@ set -e
 # 常量定义
 # ==============================================
 readonly REQUIRED_UBUNTU_VERSION="24.04"
-readonly CONDA_ENV_NAME="spark-tts-python-3.12"
 readonly PYTHON_VERSION="3.12"
+readonly CONDA_ENV_NAME="spark-tts-python-$PYTHON_VERSION"
 readonly NVIDIA_DRIVER_VERSION="550.163.01"  # Tesla 100兼容版本
 readonly CUDA_TOOLKIT_VERSION="12.4"         # PyTorch安装指定版本
 readonly DIR_HF_MODELS="$HOME/hf_models"
 readonly DIR_CURRENT=$(pwd)
 readonly DIR_WORKSPACE="$DIR_CURRENT/workspace"
 readonly DIR_REPO="$DIR_WORKSPACE/Spark-TTS"
+
+readonly URL_SOURCE_PIP_TSINGHUA="https://pypi.tuna.tsinghua.edu.cn/simple"
+readonly URL_SOURCE_APT_TSINGHUA="https://mirrors.tuna.tsinghua.edu.cn/ubuntu"
+readonly URL_SOURCE_CONDA="https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
+readonly FILE_UBUNTU_SOURCES="/etc/apt/sources.list.d/ubuntu.sources"
+readonly URL_SOURCE_CUDA="https://mirrors.tuna.tsinghua.edu.cn/cloud/whl/cu124"
+readonly URL_SOURCE_CUDA_LLAMA="https://jllllll.github.io/llama-cpp-python-cuBLAS-wheels/whl/cu124"
 
 export CUDA_VISIBLE_DEVICES=1,2 # 只用第1张显卡（编号从0开始），因为当前环境中，0号为16GB，1和2为32GB
 # ==============================================
@@ -29,7 +36,38 @@ check_ubuntu_version() {
         echo "✅ Ubuntu版本检查通过：$current_version"
     fi
 }
+# ==============================================
+# 函数定义：检查并安装Hugging Face CLI
+# ==============================================
+install_huggingface_cli() {
+    echo "-- 正在检查 huggingface_hub 和 hf 命令是否安装..."
+    pip install hf huggingface_hub
+    echo "✅ huggingface_hub 已安装：$(python -c 'import huggingface_hub; print(huggingface_hub.__version__)')"
+    echo "✅ hf 命令已安装：$(hf --version 2>/dev/null || echo '未检测到')"
+}
 
+# ==============================================
+# 函数定义：安装pytorch（基于cuda124）
+# ==============================================
+install_pytorch() {
+    echo "-- 正在检查PyTorch是否安装..."
+    if ! python -c "import torch; print(torch.__version__)" &> /dev/null; then
+        echo "❌ 未检测到PyTorch，正在安装基于cuda124的版本..."
+        pip install --upgrade pip
+        CUDA124_UPDATE_PARAMS="--force-reinstall --no-cache-dir --index-url $URL_SOURCE_PIP_TSINGHUA --extra-index-url $URL_SOURCE_CUDA"
+        pip install \
+            torch \
+            torchvision \
+            torchaudio \
+            transformers \
+            accelerate \
+            sentencepiece \
+            $CUDA124_UPDATE_PARAMS
+        echo "✅ PyTorch安装完成：$(python -c "import torch; print(torch.__version__ + ' (CUDA: ' + torch.version.cuda + ')')")"
+    else
+        echo "✅ PyTorch已安装：$(python -c "import torch; print(torch.__version__ + ' (CUDA: ' + torch.version.cuda + ')')")"
+    fi
+}
 # ==============================================
 # 函数定义：检查conda环境是否存在，不存在则创建并激活
 # ==============================================
@@ -54,6 +92,27 @@ check_and_create_conda_env() {
     fi
 }
 
+# ==============================================
+# 函数定义：询问是否删除conda环境
+# ==============================================
+ask_delete_conda_env() {
+    local is_delete_conda_env_flag=$1
+    if [[ "$is_delete_conda_env_flag" == "-y" ]]; then
+        echo "-- 正在删除conda环境'$CONDA_ENV_NAME'..."
+        conda remove --name "$CONDA_ENV_NAME" --all -y
+        echo "✅ conda环境'$CONDA_ENV_NAME'已删除。"
+    else
+        read -p "是否要删除当前conda环境'$CONDA_ENV_NAME'? [y/N]: " answer
+        answer=${answer:-n}
+        if [[ "$answer" =~ ^[Yy]$ ]]; then
+            echo "-- 正在删除conda环境'$CONDA_ENV_NAME'..."
+            conda remove --name "$CONDA_ENV_NAME" --all -y
+            echo "✅ conda环境'$CONDA_ENV_NAME'已删除。"
+        else
+            echo "未删除conda环境。"
+        fi
+    fi
+}
 # ==============================================
 # 函数定义：下载Hugging Face模型/数据集（可指定下载路径）
 # ==============================================
@@ -93,7 +152,8 @@ install_spark_tts() {
     cd "$DIR_REPO"
     echo "-- 安装 Spark-TTS 依赖..."
     if [ ! -f "$DIR_WORKSPACE/status/spark-tts.requirements_installed" ]; then
-        pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host=mirrors.aliyun.com
+        pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/ --force-reinstall --trusted-host=mirrors.aliyun.com
+        pip install soundfile
         touch "$DIR_WORKSPACE/status/spark-tts.requirements_installed"
     else
         echo "✅ Spark-TTS 依赖已安装，无需重复安装。"
@@ -106,15 +166,23 @@ download_spark_tts_model(){
 }
 text2voice(){
     # 文字转语音
+    echo "清理：$DIR_REPO/result/"
+    rm -rf "$DIR_REPO/result/"
     python -m cli.inference \
         --text "$message" \
         --device 0 \
         --save_dir "$DIR_REPO/result" \
         --model_dir "$DIR_REPO/pretrained_models" \
         --prompt_text "吃燕窝就选燕之屋，本节目由26年专注高品质燕窝的燕之屋冠名播出。豆奶牛奶换着喝，营养更均衡，本节目由豆本豆豆奶特约播出。" \
-        --prompt_speech_path "$DIR_REPO/example/prompt_audio.wav"
+        --prompt_speech_path "$DIR_REPO/example/prompt_audio.wav" \
+        --speed "very_low"
 
-    ls -lah "$DIR_REPO/result"
+
+    # 开始播放
+    file_output_wav=/home/x/Documents/smart_tools/pickme/workspace/Spark-TTS/result/$(ls "$DIR_REPO/result/")
+    echo "正在播放：$file_output_wav"
+    ffplay -nodisp -autoexit "$file_output_wav"
+
 }
 # ==============================================
 # 主函数：脚本入口
@@ -123,21 +191,27 @@ main() {
     message=$1
     check_ubuntu_version
 
+    # 询问是否删除conda环境
+    ask_delete_conda_env
+
     # 检查conda环境并创建/激活
     check_and_create_conda_env
 
-    if [ -f "$DIR_WORKSPACE/output/model.prompt2txt.txt" ]; then
-        echo "✅ 找到文本文件：$DIR_WORKSPACE/output/model.prompt2txt.txt"
-        echo "======================================================"
-        cat "$DIR_WORKSPACE/output/model.prompt2txt.txt"
-        echo "======================================================"
-        # 文字转音频
-        cat "$DIR_WORKSPACE/output/model.prompt2txt.txt" > message
-    else
-        echo "======================================================"
-        cat "$message"
-        echo "======================================================"
+    if [ ! -n "$message" ]; then
+        message=$(cat "$DIR_WORKSPACE/output/prompt2txt.result.txt")
     fi
+     # fix：确保输入文本格式正确（如无特殊字符、空格），且tokenizer能正确转换为token IDs
+    # 清理message中的特殊字符、多余空格、换行符和空行
+    message=$(echo "$message" | tr -d '\r' | sed '/^[[:space:]]*$/d' | sed 's/[[:space:]]\+/ /g' | sed 's/^[ \t]*//;s/[ \t]*$//')
+
+    echo "======================================================"
+    echo "$message"
+    echo "======================================================"
+
+    # 安装 Hugging Face CLI
+    install_huggingface_cli
+    # 安装 PyTorch
+    # install_pytorch
     # 安装 Spark-TTS
     install_spark_tts
     # 下载 Spark-TTS 模型
@@ -177,4 +251,4 @@ main() {
         echo "⏱️ 总耗时: ${duration}秒"
     fi
 }
-main
+main $1

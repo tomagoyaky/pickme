@@ -262,6 +262,7 @@ EOF
 # 主函数：脚本入口
 # ==============================================
 main() {
+    message=$1
     # model_package_name="Ttimofeyka/MistralRP-Noromaid-NSFW-Mistral-7B-GGUF"
     # model_file_name="MistralRP-Noromaid-NSFW-7B-Q8_0.gguf"
 
@@ -316,9 +317,7 @@ main() {
     fi
 
     # 加载Hugging Face模型
-    mkdir -p "$DIR_WORKSPACE/output"
-    load_huggingface_model "$DIR_HF_MODELS/$model_package_name/$model_file_name" \
-        "写一段500字的色情小说。要求更多的语气词，少一些旁白；包含口交、做爱等场景，使用中文输出，不要空行和空格" > "$DIR_WORKSPACE/output/model.prompt2txt.txt"
-    cat "$DIR_WORKSPACE/output/model.prompt2txt.txt"
+    load_huggingface_model "$DIR_HF_MODELS/$model_package_name/$model_file_name" "$message" > "$DIR_WORKSPACE/output/prompt2txt.result.txt"
+    cat "$DIR_WORKSPACE/output/prompt2txt.result.txt"
 }
-main
+main "$1"

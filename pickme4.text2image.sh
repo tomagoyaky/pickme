@@ -121,7 +121,7 @@ download_comfyui_model() {
 # ==============================================
 main() {
     message=$1
-
+    check_ubuntu_version
     # 检查conda环境并创建/激活
     check_and_create_conda_env
 
