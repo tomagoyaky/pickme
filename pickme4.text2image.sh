@@ -48,20 +48,22 @@ modles_setup(){
 # ==============================================
 text2image() {
     local message="$1"
+    local check_point_model_file_name="$2"
+    local step_num=$3
     if [[ -z "$message" ]]; then
         echo "❌ 未提供输入文本"
         return 1
     fi
-    echo "-- 正在将文本转换为图像：$message ..."
+    echo -e "-- 正在将文本转换为图像：$message ...\n"
     # 这里调用实际的文本转图像命令
     cd "$DIR_REPO"
-    json=$(cat <<EOF
+    local json=$(cat <<EOF
 {
   "prompt": {
     "3": {
       "inputs": {
         "seed": 357088847916134,
-        "steps": 80,
+        "steps": $step_num,
         "cfg": 8,
         "sampler_name": "euler",
         "scheduler": "normal",
@@ -90,7 +92,7 @@ text2image() {
     },
     "4": {
       "inputs": {
-        "ckpt_name": "v1-5-pruned-emaonly.safetensors"
+        "ckpt_name": "$check_point_model_file_name"
       },
       "class_type": "CheckpointLoaderSimple",
       "_meta": {
@@ -170,6 +172,171 @@ EOF
     curl -X POST http://127.0.0.1:8188/prompt \
         -H "Content-Type: application/json" \
         -d "$json"
+    echo -e "\n"
+}
+
+# ==============================================
+# 函数定义：图像转图像（图生图）
+# ==============================================
+image2image() {
+  local input_image="$1"
+  local prompt="$2"
+  local check_point_model_file_name="$3"
+  local step_num=$4
+  if [[ ! -f "$input_image" ]]; then
+    echo "❌ 输入图像文件不存在: $input_image"
+    return 1
+  fi
+  if [[ -z "$prompt" ]]; then
+    echo "❌ 未提供输入文本"
+    return 1
+  fi
+  echo -e "-- 正在将图像和文本转换为新图像：$input_image, $prompt ...\n"
+  cd "$DIR_REPO"
+  local json=$(cat <<EOF
+{
+  "prompt": {
+    "3": {
+      "inputs": {
+        "seed": 280823642470253,
+        "steps": $step_num,
+        "cfg": 8,
+        "sampler_name": "dpmpp_2m",
+        "scheduler": "normal",
+        "denoise": 0.8700000000000001,
+        "model": [
+          "14",
+          0
+        ],
+        "positive": [
+          "6",
+          0
+        ],
+        "negative": [
+          "7",
+          0
+        ],
+        "latent_image": [
+          "12",
+          0
+        ]
+      },
+      "class_type": "KSampler",
+      "_meta": {
+        "title": "K采样器"
+      }
+    },
+    "6": {
+      "inputs": {
+        "text": "$prompt",
+        "clip": [
+          "14",
+          1
+        ]
+      },
+      "class_type": "CLIPTextEncode",
+      "_meta": {
+        "title": "CLIP文本编码"
+      }
+    },
+    "7": {
+      "inputs": {
+        "text": "watermark, text\n",
+        "clip": [
+          "14",
+          1
+        ]
+      },
+      "class_type": "CLIPTextEncode",
+      "_meta": {
+        "title": "CLIP文本编码"
+      }
+    },
+    "8": {
+      "inputs": {
+        "samples": [
+          "3",
+          0
+        ],
+        "vae": [
+          "14",
+          2
+        ]
+      },
+      "class_type": "VAEDecode",
+      "_meta": {
+        "title": "VAE解码"
+      }
+    },
+    "9": {
+      "inputs": {
+        "filename_prefix": "ComfyUI",
+        "images": [
+          "8",
+          0
+        ]
+      },
+      "class_type": "SaveImage",
+      "_meta": {
+        "title": "保存图像"
+      }
+    },
+    "10": {
+      "inputs": {
+        "image": "$input_image"
+      },
+      "class_type": "LoadImage",
+      "_meta": {
+        "title": "加载图像"
+      }
+    },
+    "12": {
+      "inputs": {
+        "pixels": [
+          "18",
+          0
+        ],
+        "vae": [
+          "14",
+          2
+        ]
+      },
+      "class_type": "VAEEncode",
+      "_meta": {
+        "title": "VAE编码"
+      }
+    },
+    "14": {
+      "inputs": {
+        "ckpt_name": "$check_point_model_file_name"
+      },
+      "class_type": "CheckpointLoaderSimple",
+      "_meta": {
+        "title": "Checkpoint加载器（简易）"
+      }
+    },
+    "18": {
+      "inputs": {
+        "upscale_method": "nearest-exact",
+        "megapixels": 0.25,
+        "image": [
+          "10",
+          0
+        ]
+      },
+      "class_type": "ImageScaleToTotalPixels",
+      "_meta": {
+        "title": "缩放图像（像素）"
+      }
+    }
+  }
+}
+EOF
+  )
+  curl -X POST http://127.0.0.1:8188/prompt \
+    -H "Content-Type: application/json" \
+    -d "$json"
+  echo -e "\n"
 }
 # 查询 ComfyUI 队列状态，判断模型是否生成完毕
 check_queue_status() {
@@ -181,10 +348,10 @@ check_queue_status() {
     echo "-- 正在查询 ComfyUI 队列状态..."
 
     while (( attempt <= max_attempts )); do
-        response=$(curl -s "$api_url")
+        local response=$(curl -s "$api_url")
         echo "[debug] $response"
-        pending=$(echo "$response" | grep -o '"pending": *[0-9]*' | grep -o '[0-9]*')
-        running=$(echo "$response" | grep -o '"running": *[0-9]*' | grep -o '[0-9]*')
+        local pending=$(echo "$response" | grep -o '"pending": *[0-9]*' | grep -o '[0-9]*')
+        local running=$(echo "$response" | grep -o '"running": *[0-9]*' | grep -o '[0-9]*')
         echo "pending: $pending, running: $running"
 
         if [[ "$pending" == "0" && "$running" == "0" ]]; then
@@ -228,7 +395,7 @@ fi
 message=$(echo "$message" | tr -d '\r' | sed '/^[[:space:]]*$/d' | sed 's/[[:space:]]\+/ /g' | sed 's/^[ \t]*//;s/[ \t]*$//')
 
 echo "======================================================"
-echo "$message"
+echo "$message\n"
 echo "======================================================"
 
 # 安装PyTorch
@@ -238,17 +405,7 @@ install_huggingface_cli
 # 安装 ComfyUI
 install_comfyui
 # 下载 ComfyUI 模型
- model_start_time=$(date +%s)
 # download_comfyui_model  # 这个会把模型仓库全部都下载下来，太大了
-model_end_time=$(date +%s)
-model_duration=$((model_end_time - model_start_time))
-if (( model_duration >= 3600 )); then
-    printf "⏱️ ComfyUI模型下载时间: %.2f 小时\n" "$(echo "$model_duration/3600" | bc -l)"
-elif (( model_duration >= 60 )); then
-    printf "⏱️ ComfyUI模型下载时间: %.2f 分钟\n" "$(echo "$model_duration/60" | bc -l)"
-else
-    echo "⏱️ ComfyUI模型下载时间: ${model_duration} 秒"
-fi
 
 # 模型下载
 # modles_setup
@@ -259,19 +416,41 @@ else
     echo "✅ ComfyUI 服务器已启动，日志文件位于 $DIR_WORKSPACE/logs/comfyui.log"
 fi
 
+step_num=120
+
 # 文字转图像
-start_time=$(date +%s)
-for i in {1..20}; do
-  echo "第 $i 次生成图像..."
-  text2image "$message"
-  check_queue_status
+json=$(cat <<EOF
+[
+  "一只可爱的猫，宫崎骏漫画风格",
+  "一只可爱的兔子，宫崎骏漫画风格",
+  "一只凶猛的老虎，宫崎骏漫画风格",
+  "一只草原上的长颈鹿，宫崎骏漫画风格",
+  "一只侏罗纪时期的恐龙，宫崎骏漫画风格"
+]
+EOF
+)
+# for i in {0..4}; do
+#   echo "第 $i 次生成图像..."
+#   prompt=$(jq -r ".[$i]" <<< "$json")
+#   echo "prompt: $prompt"
+
+#   # 异步的提交生图请求
+#   text2image "$prompt" "v1-5-pruned-emaonly-fp16.safetensors" $step_num
+# done
+json2=$(cat <<EOF
+[
+  "红色衣服，皮衣，黑色短发的女性战士",
+  "黄色衣服，毛衣，白色短发的女修士",
+  "吊带衣服，裙子，马尾辫的女学生"
+]
+EOF
+)
+
+for i in {0..2}; do
+  echo "第 $i 次图片生成图像..."
+  prompt=$(jq -r ".[$i]" <<< "$json2")
+  echo "prompt: $prompt"
+
+  # 异步的提交生图请求
+  image2image "/home/x/Documents/smart_tools/pickme/workspace/input.png" "$prompt" "v1-5-pruned-emaonly-fp16.safetensors" $step_num
 done
-end_time=$(date +%s)
-duration=$((end_time - start_time))
-if (( duration >= 3600 )); then
-    printf "⏱️ 执行时间: %.2f 小时\n" "$(echo "$duration/3600" | bc -l)"
-elif (( duration >= 60 )); then
-    printf "⏱️ 执行时间: %.2f 分钟\n" "$(echo "$duration/60" | bc -l)"
-else
-    echo "⏱️ 执行时间: ${duration} 秒"
-fi
